@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="icon" href="./favicon.ico" type="image/x-icon" />
+  <link rel="icon" sizes="32x32" href="./favicon-32x32.png" type="image/png" />
+  <link rel="icon" sizes="16x16" href="./favicon-16x16.png" type="image/png" />
+  <meta charset="UTF-8" />
+  <title>Calorimetry Simulation</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap');
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      max-width: 900px;
+      background-color: #EEEEEE;
+      font-family: inter;
+      font-size: 14px;
+      font-weight: normal;
+      line-height: 20px;
+    }
+    canvas {
+      max-width: 100%;
+      height: 400px !important;
+    }
+
+    h1 {
+      font-size: 36px;
+      font-weight: bold;
+      line-height: 44px;
+    }
+
+    button {
+       background-color: #004080;
+       color: #eee;
+       padding: 10px 20px;
+       font-size: 24px;
+       border: none;
+       border-radius: 6px;
+       cursor: pointer;
+       font-weight: 600;
+       transition: background-color 0.2s, box-shadow 0.2s;
+    }
+
+    button:hover {
+      background-color: #0059b3;
+    }
+
+    button:focus {
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(0, 64, 128, 0.3);
+    }
+
+    .input-group {
+      display: flex;
+      flex-direction: column;
+      margin-bottom: 16px;
+      font-size: 14px;
+      color: #333;
+      width: 200px;
+    }
+
+    .input-group span {
+      margin-bottom: 4px;
+      font-weight: 500;
+    }
+
+    .input-group input {
+      padding: 8px 12px;
+      font-size: 14px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .input-group input:focus {
+      border-color: #004080;
+      box-shadow: 0 0 0 2px rgba(0, 64, 128, 0.1);
+      outline: none;
+    }
+
+  </style>
+</head>
+<body>
+  <h1>Calorimetry Simulation</h1>
+  <form id="calorimetryForm">
+    <label class="input-group">
+      <span>Ice mass (g):</span>
+      <input type="number" id="mass1" value="100" step="1" min="0" />
+    </label>
+    <label class="input-group">
+      <span>Ice temp (°C):</span>
+      <input type="number" id="temp1" value="-100" step="1" />
+    </label>
+    <label class="input-group">
+      <span>Water mass (g):</span>
+      <input type="number" id="mass2" value="200" step="1" min="0" />
+    </label>
+    <label class="input-group">
+      <span>Water temp (°C):</span>
+      <input type="number" id="temp2" value="25" step="1" />
+    </label>
+    <button type="submit">Run Simulation</button>
+  </form>
+
+  <p id="result"></p>
+  <canvas id="tempChart"></canvas>
+
+  <script>
+    let chart = null;
+
+    document.getElementById("calorimetryForm").addEventListener("submit", function (e) {
+      e.preventDefault();
+
+      document.activeElement.blur();
+
+      const m_ice_initial = parseFloat(document.getElementById("mass1").value);
+      const T_ice_initial = parseFloat(document.getElementById("temp1").value);
+      const m_water_initial = parseFloat(document.getElementById("mass2").value);
+      const T_water_initial = parseFloat(document.getElementById("temp2").value);
+
+      const c_ice = 2.1;    
+      const c_water = 4.18;
+      const L_fusion = 334;
+      const dt = 0.1;
+      const maxTime = 300;
+      const k = 10;          
+
+      let m_ice = m_ice_initial;
+      let m_water = m_water_initial;
+      let T_ice = T_ice_initial;
+      let T_water = T_water_initial;
+
+      const times = [];
+      const iceTemps = [];
+      const waterTemps = [];
+      const iceMasses = [];
+      const waterMasses = [];
+
+      let t = 0;
+
+      while (t <= maxTime) {
+        times.push(t.toFixed(1));
+        iceTemps.push(T_ice);
+        waterTemps.push(T_water);
+        iceMasses.push(m_ice);
+        waterMasses.push(m_water);
+
+        const dQ = k * (T_water - T_ice) * dt;
+
+        if (T_ice < 0 && 0 < T_water) {
+            const dT_ice = dQ / (m_ice * c_ice);
+            const dT_water = -dQ / (m_water * c_water);
+
+            T_ice = Math.min(0, T_ice + dT_ice);
+            T_water = Math.max(0, T_water + dT_water);
+        } else if (T_ice === 0 && m_ice > 0 && m_water > 0 && T_water > 0) {
+            const Q_needed_to_melt_all_ice = m_ice * L_fusion;
+            const Q_available = dQ > 0 ? dQ : 0;
+
+            const Q_used = Math.min(Q_available, Q_needed_to_melt_all_ice);
+            const dmelt = Q_used / L_fusion;
+
+            m_ice -= dmelt;
+            m_water += dmelt;
+
+            const dT_water = -Q_used / (m_water * c_water);
+            T_water += dT_water;
+
+            T_ice = 0;
+
+            const leftoverQ = Q_available - Q_used;
+
+            if (leftoverQ > 0) {
+                const dT = leftoverQ / (m_water * c_water);
+                T_water += dT;
+                T_ice = 0;
+            }
+        } else if (T_water === 0 && m_water > 0 && T_ice < 0) {
+            const Q_needed_to_freeze_all_water = m_water * L_fusion;
+            const Q_available = dQ > 0 ? dQ : 0;
+
+            const Q_used = Math.min(Q_available, Q_needed_to_freeze_all_water);
+            const dmelt = Q_used / L_fusion;
+
+            m_ice += dmelt;
+            m_water -= dmelt;
+
+            const dT_ice = Q_used / (m_ice * c_ice);
+            T_ice += dT_ice;
+
+            T_water = 0;
+
+            const leftoverQ = Q_available - Q_used;
+            
+            if (leftoverQ > 0) {
+                const dT = leftoverQ / (m_ice * c_ice);
+                T_ice -= dT;
+                T_water = 0;
+            }
+        }
+
+        if (T_water < 0.1) {T_water = 0;}
+        if (T_ice > -0.1) {T_ice = 0;}
+
+        if (Math.abs(T_water - T_ice) < 0.01 && (m_ice === 0 || m_water === 0)) break;
+        if (t >= maxTime) break;
+
+        t += dt;
+    }
+
+
+      const ctx = document.getElementById("tempChart").getContext("2d");
+      if (chart) chart.destroy();
+
+      chart = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels: times,
+          datasets: [
+            {
+              label: "Ice Temperature (°C)",
+              data: iceTemps,
+              borderColor: "blue",
+              tension: 0.3,
+              fill: false,
+            },
+            {
+              label: "Water Temperature (°C)",
+              data: waterTemps,
+              borderColor: "red",
+              tension: 0.3,
+              fill: false,
+            },
+            {
+              label: "Ice Mass (g)",
+              data: iceMasses,
+              borderColor: "navy",
+              borderDash: [5, 5],
+              yAxisID: "yMass",
+              fill: false,
+            },
+            {
+              label: "Water Mass (g)",
+              data: waterMasses,
+              borderColor: "darkred",
+              borderDash: [5, 5],
+              yAxisID: "yMass",
+              fill: false,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          interaction: {
+            mode: "index",
+            intersect: false,
+          },
+          stacked: false,
+          scales: {
+            x: {
+              title: { display: true, text: "Time (sec)" },
+            },
+            y: {
+              type: "linear",
+              display: true,
+              position: "left",
+              title: { display: true, text: "Temperature (°C)" },
+              min: Math.min(...iceTemps, ...waterTemps) - 10,
+              max: Math.max(...iceTemps, ...waterTemps) + 10,
+            },
+            yMass: {
+              type: "linear",
+              display: true,
+              position: "right",
+              title: { display: true, text: "Mass (g)" },
+              grid: {
+                drawOnChartArea: false,
+              },
+              min: 0,
+              max: m_ice_initial + m_water_initial + 50,
+            },
+          },
+        },
+      });
+    });
+  </script>
+</body>
+</html>
